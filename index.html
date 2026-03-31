@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Math Compiler</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --surface2:  #22263a;
+    --border:    rgba(255,255,255,0.08);
+    --border2:   rgba(255,255,255,0.15);
+    --text:      #e8eaf0;
+    --muted:     #7a7f99;
+    --accent:    #6c63ff;
+    --accent2:   #a78bfa;
+    --green:     #34d399;
+    --red:       #f87171;
+    --amber:     #fbbf24;
+    --num-bg:    #1e2235;
+    --op-bg:     #252a40;
+    --eq-bg:     #6c63ff;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent2); }
+  .tagline { font-size: 13px; color: var(--muted); margin-left: 4px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-left: auto; box-shadow: 0 0 6px var(--green); }
+  .status-label { font-size: 12px; color: var(--muted); }
+
+  /* ── Main calculator panel ── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    padding: 28px;
+    gap: 20px;
+    overflow-y: auto;
+  }
+
+  /* ── Display ── */
+  .display {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .display-expr {
+    font-size: 14px;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+    min-height: 20px;
+    word-break: break-all;
+  }
+  .display-result {
+    font-size: 42px;
+    font-weight: 300;
+    text-align: right;
+    color: var(--text);
+    letter-spacing: -1px;
+    transition: color .2s;
+  }
+  .display-result.error { color: var(--red); font-size: 20px; font-weight: 400; padding-top: 8px; }
+  .display-result.computing { color: var(--muted); }
+
+  /* ── Token strip ── */
+  .token-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-height: 30px;
+    align-items: center;
+  }
+  .token {
+    font-size: 11px;
+    font-family: monospace;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .token.NUM    { background: #1a3a2a; color: var(--green); border: 1px solid #2a5a3a; }
+  .token.OP     { background: #2a1a3a; color: var(--accent2); border: 1px solid #4a2a6a; }
+  .token.LPAREN,
+  .token.RPAREN { background: #2a2a1a; color: var(--amber); border: 1px solid #5a4a1a; }
+  .token.EOF    { display: none; }
+
+  /* ── Button grid ── */
+  .btn-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .btn {
+    height: 64px;
+    border: none;
+    border-radius: 12px;
+    font-size: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform .08s, opacity .1s, background .1s;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn:active { transform: scale(0.94); }
+  .btn.num    { background: var(--num-bg); color: var(--text); }
+  .btn.num:hover { background: #252a40; }
+  .btn.op     { background: var(--op-bg); color: var(--accent2); }
+  .btn.op:hover { background: #2e3350; }
+  .btn.clear  { background: #2a1a1a; color: var(--red); }
+  .btn.clear:hover { background: #3a2020; }
+  .btn.del    { background: var(--op-bg); color: var(--amber); }
+  .btn.del:hover { background: #2e3350; }
+  .btn.eq     { background: var(--eq-bg); color: #fff; grid-column: span 2; font-size: 24px; }
+  .btn.eq:hover { background: #7c73ff; }
+  .btn.zero   { grid-column: span 2; }
+  .btn.paren  { background: var(--op-bg); color: var(--amber); }
+
+  /* ── Input row ── */
+  .input-row {
+    display: flex;
+    gap: 10px;
+  }
+  #expr-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 16px;
+    font-family: 'Courier New', monospace;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  #expr-input:focus { border-color: var(--accent); }
+  .run-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .run-btn:hover { background: #7c73ff; }
+
+  /* ── Stats ── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat-val { font-size: 22px; font-weight: 600; color: var(--accent2); }
+  .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── AST viewer ── */
+  .ast-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #ast-canvas {
+    width: 100%;
+    min-height: 120px;
+    display: block;
+  }
+
+  /* ── Sidebar: history ── */
+  .sidebar {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar-title { font-size: 15px; font-weight: 600; }
+  .clear-all-btn {
+    font-size: 12px;
+    color: var(--red);
+    background: none;
+    border: 1px solid #3a2020;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .clear-all-btn:hover { background: #2a1010; }
+
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .history-list::-webkit-scrollbar { width: 4px; }
+  .history-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .hist-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    cursor: pointer;
+    transition: border-color .15s;
+    position: relative;
+  }
+  .hist-item:hover { border-color: var(--border2); }
+  .hist-expr {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  .hist-result {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--green);
+  }
+  .hist-time {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .hist-del {
+    position: absolute;
+    top: 8px; right: 10px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity .15s;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .hist-item:hover .hist-del { opacity: 1; }
+  .hist-del:hover { color: var(--red); background: #2a1010; }
+
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 40px 20px;
+    line-height: 1.8;
+  }
+  .empty-state .icon { font-size: 32px; display: block; margin-bottom: 10px; opacity: .5; }
+
+  /* ── Section label ── */
+  .section-lbl {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+    .sidebar { border-left: none; border-top: 1px solid var(--border); max-height: 300px; }
+    .stats { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Math<span>Compiler</span></div>
+  <div class="tagline">Lexer → Parser → AST → Evaluator</div>
+  <div class="status-dot" id="status-dot"></div>
+  <div class="status-label" id="status-label">connecting…</div>
+</header>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+  <!-- Display -->
+  <div class="display">
+    <div class="display-expr" id="display-expr">0</div>
+    <div class="display-result" id="display-result">0</div>
+  </div>
+
+  <!-- Tokens -->
+  <div>
+    <div class="section-lbl" style="margin-bottom:8px">Tokens</div>
+    <div class="token-strip" id="token-strip">
+      <span style="color:var(--muted);font-size:12px">Enter an expression to see tokens</span>
+    </div>
+  </div>
+
+  <!-- Input row for typing -->
+  <div class="input-row">
+    <input id="expr-input" type="text" placeholder="Type expression e.g. (3 + 4) * 2 ^ 8" autocomplete="off"/>
+    <button class="run-btn" onclick="computeFromInput()">Run ↵</button>
+  </div>
+
+  <!-- Button grid -->
+  <div class="btn-grid">
+    <button class="btn clear" onclick="clearAll()">AC</button>
+    <button class="btn paren" onclick="append('(')"> ( </button>
+    <button class="btn paren" onclick="append(')')"> ) </button>
+    <button class="btn del"   onclick="delChar()">⌫</button>
+
+    <button class="btn op" onclick="append('^')">x^y</button>
+    <button class="btn op" onclick="append('%')"> % </button>
+    <button class="btn op" onclick="append('/')"> ÷ </button>
+    <button class="btn op" onclick="append('*')"> × </button>
+
+    <button class="btn num" onclick="append('7')">7</button>
+    <button class="btn num" onclick="append('8')">8</button>
+    <button class="btn num" onclick="append('9')">9</button>
+    <button class="btn op"  onclick="append('-')"> − </button>
+
+    <button class="btn num" onclick="append('4')">4</button>
+    <button class="btn num" onclick="append('5')">5</button>
+    <button class="btn num" onclick="append('6')">6</button>
+    <button class="btn op"  onclick="append('+')"> + </button>
+
+    <button class="btn num" onclick="append('1')">1</button>
+    <button class="btn num" onclick="append('2')">2</button>
+    <button class="btn num" onclick="append('3')">3</button>
+    <button class="btn num zero" onclick="append('0')">0</button>
+
+    <button class="btn num" onclick="append('.')"> . </button>
+    <button class="btn eq"  onclick="compute()"> = </button>
+  </div>
+
+  <!-- Stats -->
+  <div>
+    <div class="section-lbl" style="margin-bottom:8px">Session stats</div>
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-val" id="stat-total">0</div>
+        <div class="stat-lbl">Calculations</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="stat-avg">—</div>
+        <div class="stat-lbl">Avg result</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="stat-op">—</div>
+        <div class="stat-lbl">Top operator</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AST -->
+  <div class="ast-panel">
+    <div class="panel-title">
+      Abstract Syntax Tree
+      <span id="ast-hint" style="font-weight:400;text-transform:none;letter-spacing:0">waiting…</span>
+    </div>
+    <canvas id="ast-canvas" height="150"></canvas>
+  </div>
+
+</main>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-title">History</span>
+    <button class="clear-all-btn" onclick="clearAll(true)">Clear all</button>
+  </div>
+  <div class="history-list" id="history-list">
+    <div class="empty-state">
+      <span class="icon">🧮</span>
+      No calculations yet.<br>Try <code style="color:var(--accent2)">2 ^ 10</code> or<br><code style="color:var(--accent2)">(3 + 4) * 7</code>
+    </div>
+  </div>
+</aside>
+
+<script>
+const API = 'http://localhost:8000/api';
+let expr = '';
+
+// ── connectivity check ──
+async function checkServer() {
+  try {
+    await fetch(API + '/stats');
+    document.getElementById('status-dot').style.background = 'var(--green)';
+    document.getElementById('status-label').textContent = 'online';
+  } catch {
+    document.getElementById('status-dot').style.background = 'var(--red)';
+    document.getElementById('status-dot').style.boxShadow = '0 0 6px var(--red)';
+    document.getElementById('status-label').textContent = 'offline — run backend';
+  }
+}
+
+// ── input helpers ──
+function append(ch) {
+  expr += ch;
+  document.getElementById('expr-input').value = expr;
+  updateDisplay();
+}
+function delChar() {
+  expr = expr.slice(0, -1);
+  document.getElementById('expr-input').value = expr;
+  updateDisplay();
+}
+function clearAll(historyToo) {
+  expr = '';
+  document.getElementById('expr-input').value = '';
+  document.getElementById('display-expr').textContent = '0';
+  document.getElementById('display-result').textContent = '0';
+  document.getElementById('display-result').className = 'display-result';
+  document.getElementById('token-strip').innerHTML = '<span style="color:var(--muted);font-size:12px">Enter an expression to see tokens</span>';
+  clearAst();
+  if (historyToo) {
+    fetch(API + '/history', { method: 'DELETE' }).then(() => { loadHistory(); loadStats(); });
+  }
+}
+function computeFromInput() {
+  expr = document.getElementById('expr-input').value;
+  compute();
+}
+function updateDisplay() {
+  const el = document.getElementById('display-expr');
+  el.textContent = expr || '0';
+}
+
+// ── keyboard ──
+document.getElementById('expr-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { expr = e.target.value; compute(); }
+});
+document.addEventListener('keydown', e => {
+  if (document.activeElement === document.getElementById('expr-input')) return;
+  if ('0123456789.+-*/%^()'.includes(e.key)) append(e.key);
+  if (e.key === 'Backspace') delChar();
+  if (e.key === 'Enter') compute();
+  if (e.key === 'Escape') clearAll();
+});
+
+// ── compute ──
+async function compute() {
+  if (!expr.trim()) return;
+  const resultEl = document.getElementById('display-result');
+  resultEl.className = 'display-result computing';
+  resultEl.textContent = '…';
+  document.getElementById('display-expr').textContent = expr;
+
+  try {
+    const res = await fetch(API + '/calculate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expression: expr })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      resultEl.className = 'display-result error';
+      resultEl.textContent = data.error;
+      renderTokens([]);
+      clearAst();
+      return;
+    }
+
+    resultEl.className = 'display-result';
+    resultEl.textContent = formatNum(data.result);
+    expr = String(data.result);
+    document.getElementById('expr-input').value = expr;
+
+    renderTokens(data.tokens);
+    renderAst(data.ast);
+    loadHistory();
+    loadStats();
+  } catch {
+    resultEl.className = 'display-result error';
+    resultEl.textContent = 'Cannot reach server';
+  }
+}
+
+function formatNum(n) {
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return parseFloat(n.toPrecision(10)).toString();
+}
+
+// ── token strip ──
+function renderTokens(tokens) {
+  const el = document.getElementById('token-strip');
+  if (!tokens || !tokens.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:12px">No tokens</span>';
+    return;
+  }
+  el.innerHTML = tokens
+    .filter(t => t.type !== 'EOF')
+    .map(t => `<span class="token ${t.type}">${escHtml(t.value)}</span>`)
+    .join('');
+}
+
+// ── AST canvas ──
+function clearAst() {
+  const c = document.getElementById('ast-canvas');
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  document.getElementById('ast-hint').textContent = 'waiting…';
+}
+
+function renderAst(ast) {
+  if (!ast) return;
+  document.getElementById('ast-hint').textContent = 'click nodes to explore';
+
+  const canvas = document.getElementById('ast-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth;
+
+  // measure tree depth + width
+  function depth(n) { if (!n) return 0; return 1 + Math.max(depth(n.left), depth(n.right), depth(n.operand)); }
+  const d = depth(ast);
+  const H = Math.max(120, d * 60 + 20);
+
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const R = 22;
+  const colors = { BinOp: '#6c63ff', Unary: '#a78bfa', Num: '#34d399' };
+
+  function draw(node, x, y, span) {
+    if (!node) return;
+    const children = [];
+    if (node.left)    children.push({ n: node.left,    frac: -0.5 });
+    if (node.right)   children.push({ n: node.right,   frac:  0.5 });
+    if (node.operand) children.push({ n: node.operand, frac:  0   });
+
+    const childY = y + 60;
+    const half   = span / 2;
+
+    children.forEach(({ n, frac }) => {
+      const cx = x + frac * span;
+      // line
+      ctx.beginPath();
+      ctx.moveTo(x, y + R);
+      ctx.lineTo(cx, childY - R);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      draw(n, cx, childY, half);
+    });
+
+    // circle
+    const col = colors[node.type] || '#888';
+    ctx.beginPath();
+    ctx.arc(x, y, R, 0, Math.PI * 2);
+    ctx.fillStyle = col + '33';
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // label
+    let label = '';
+    if (node.type === 'Num')    label = node.value % 1 === 0 ? String(node.value) : node.value.toFixed(2);
+    if (node.type === 'BinOp')  label = node.op;
+    if (node.type === 'Unary')  label = '-u';
+    ctx.fillStyle = '#e8eaf0';
+    ctx.font = `500 12px 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+  }
+
+  draw(ast, W / 2, 30, W * 0.45);
+}
+
+// ── history ──
+async function loadHistory() {
+  try {
+    const res = await fetch(API + '/history');
+    const rows = await res.json();
+    const el = document.getElementById('history-list');
+    if (!rows.length) {
+      el.innerHTML = `<div class="empty-state"><span class="icon">🧮</span>No calculations yet.</div>`;
+      return;
+    }
+    el.innerHTML = rows.map(r => `
+      <div class="hist-item" onclick="loadCalc('${escHtml(r.expression)}')">
+        <div class="hist-expr">${escHtml(r.expression)}</div>
+        <div class="hist-result">= ${formatNum(r.result)}</div>
+        <div class="hist-time">${r.created_at}</div>
+        <button class="hist-del" onclick="deleteCalc(event,${r.id})">✕</button>
+      </div>
+    `).join('');
+  } catch {}
+}
+
+function loadCalc(e) {
+  expr = e;
+  document.getElementById('expr-input').value = e;
+  document.getElementById('display-expr').textContent = e;
+}
+
+async function deleteCalc(ev, id) {
+  ev.stopPropagation();
+  await fetch(API + '/history/' + id, { method: 'DELETE' });
+  loadHistory();
+  loadStats();
+}
+
+// ── stats ──
+async function loadStats() {
+  try {
+    const res = await fetch(API + '/stats');
+    const d = await res.json();
+    document.getElementById('stat-total').textContent = d.total;
+    document.getElementById('stat-avg').textContent   = d.total ? formatNum(d.avg_result) : '—';
+    document.getElementById('stat-op').textContent    = d.most_used_op || '—';
+  } catch {}
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── boot ──
+checkServer();
+loadHistory();
+loadStats();
+setInterval(checkServer, 10000);
+</script>
+</body>
+</html>
